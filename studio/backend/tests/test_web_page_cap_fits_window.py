@@ -56,6 +56,15 @@ def _window(monkeypatch, ctx):
     monkeypatch.setattr(tools, "_loaded_context_tokens", lambda: ctx)
 
 
+def test_a_sentinel_from_another_module_copy_is_still_unset():
+    """A duplicate module identity must not turn "unset" into a numeric window."""
+    token = tools._REQUEST_CONTEXT_TOKENS.set(tools._UnsetContextTokens())
+    try:
+        assert tools._page_char_budget() == tools._MAX_PAGE_CHARS
+    finally:
+        tools._REQUEST_CONTEXT_TOKENS.reset(token)
+
+
 def test_a_small_window_gets_a_page_it_can_hold(monkeypatch):
     """The case that failed. 4,864 tokens leaves 3,648 for the prompt, and the page that
     broke it was 12,295 characters, roughly 3,073 tokens: 84% of the budget for one

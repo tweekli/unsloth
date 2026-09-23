@@ -40,7 +40,19 @@ from .context_window import _RESULT_NOTICE_RESERVE
 # The window of the model THIS request is served by, set by execute_tool for the call's duration. Left unset it falls
 # back to the process-global probe, which is wrong for an external-provider request: that runs Unsloth's tool loop
 # without touching a resident GGUF, so a small resident model truncated pages for a large cloud model.
-_UNSET_CONTEXT_TOKENS = object()
+class _UnsetContextTokens:
+    """Sentinel for "no explicit request window"; safe across duplicate module copies.
+
+    ``ContextVar.get()`` returns the default object.  When the same module is live under two
+    identities (as it can be in the backend test tree), each copy has its own sentinel object,
+    so the old ``is`` comparison could pass a sentinel through and later blow up on arithmetic.
+    Comparing by marker keeps the meaning while letting the identity vary.
+    """
+
+    _unsloth_unset_context_tokens = True
+
+
+_UNSET_CONTEXT_TOKENS = _UnsetContextTokens()
 _REQUEST_CONTEXT_TOKENS: ContextVar = ContextVar(
     "unsloth_request_context_tokens",
     default = _UNSET_CONTEXT_TOKENS,
@@ -14880,7 +14892,7 @@ def _result_char_budget(cap: int) -> int:
     scoped = _REQUEST_CONTEXT_TOKENS.get()
     # An explicit 0/None means asked, and unknowable (external provider), and must NOT fall through to the probe. Only
     # an absent value keeps the process-global read.
-    ctx = _loaded_context_tokens() if scoped is _UNSET_CONTEXT_TOKENS else scoped
+    ctx = _loaded_context_tokens() if getattr(scoped, "_unsloth_unset_context_tokens", False) else scoped
     if not ctx:
         return cap
     # Clamped to `cap` on the way out, not only on the way in. The floor keeps a result worth reading when the WINDOW
@@ -14911,7 +14923,7 @@ def _page_char_budget() -> int:
     scoped = _REQUEST_CONTEXT_TOKENS.get()
     # An explicit 0/None means asked, and unknowable (external provider), and must NOT fall through to the probe. Only
     # an absent value keeps the process-global read.
-    ctx = _loaded_context_tokens() if scoped is _UNSET_CONTEXT_TOKENS else scoped
+    ctx = _loaded_context_tokens() if getattr(scoped, "_unsloth_unset_context_tokens", False) else scoped
     if not ctx:
         return _MAX_PAGE_CHARS
     return max(_MIN_PAGE_CHARS, min(_MAX_PAGE_CHARS, int(ctx * 4 * _PAGE_CONTEXT_SHARE)))
@@ -14936,7 +14948,7 @@ def _window_context_tokens() -> int | None:
     scoped = _REQUEST_CONTEXT_TOKENS.get()
     # An explicit 0/None means asked, and unknowable (external provider), and must NOT fall through to the probe. Only
     # an absent value keeps the process-global read.
-    ctx = _loaded_context_tokens() if scoped is _UNSET_CONTEXT_TOKENS else scoped
+    ctx = _loaded_context_tokens() if getattr(scoped, "_unsloth_unset_context_tokens", False) else scoped
     return ctx if ctx else None
 
 
